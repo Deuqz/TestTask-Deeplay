@@ -1,9 +1,13 @@
 package org.test_tasks.deeplay;
 
-import java.lang.reflect.Array;
-import java.util.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Comparator;
+import java.util.PriorityQueue;
+import java.util.Arrays;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 public class Solution {
     protected static class Node {
