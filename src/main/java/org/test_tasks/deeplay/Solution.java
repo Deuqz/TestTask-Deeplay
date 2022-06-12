@@ -1,12 +1,15 @@
 package org.test_tasks.deeplay;
 
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Comparator;
-import java.util.PriorityQueue;
-import java.util.Arrays;
+//import java.util.List;
+//import java.util.ArrayList;
+//import java.util.Map;
+//import java.util.HashMap;
+//import java.util.Comparator;
+//import java.util.PriorityQueue;
+//import java.util.Arrays;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.*;
 import java.util.function.BiConsumer;
 
 public class Solution {
@@ -79,7 +82,7 @@ public class Solution {
     private static int getLength(String field) throws SolutionException {
         int len = (int) Math.floor(Math.sqrt(field.length()));
         if (len * len != field.length()) {
-            throw new SolutionException(String.format("Incorrect field length, current length: %d", field.length()));
+            throw new SolutionException(String.format("Field must be square, current field length: %d", field.length()));
         }
         return len;
     }
@@ -114,7 +117,7 @@ public class Solution {
     }
 
     // Двумерная динамика по полю
-    private static int calcDynamics(String field, Map<Character, Integer> costs, int length) {
+    private static int calcDynamics(@NotNull String field, Map<Character, Integer> costs, int length) {
         // Оптимизация через один массив, т.к. достаточно хранить только текущую строку
         int[] dp = new int[length];
         Arrays.fill(dp, Integer.MAX_VALUE);
@@ -124,8 +127,9 @@ public class Solution {
             int ind = i * length;
             // Мы не должны обновлять стартовую клетку
             if (ind != 0) {
-                dp[0] = dp[0] + costs.get(cells[ind++]);
+                dp[0] = dp[0] + costs.get(cells[ind]);
             }
+            ++ind;
             for (int j = 1; j < length; ++j, ++ind) {
                 dp[j] = Math.min(dp[j - 1], dp[j]) + costs.get(cells[ind]);
             }
@@ -133,7 +137,15 @@ public class Solution {
         return dp[length - 1];
     }
 
-    public static int getResult(String field, String species) throws SolutionException {
+    public static int getResult(@NotNull String field, @NotNull String species) throws SolutionException {
+        Set<Character> cells = Set.of('S', 'W', 'T', 'P');
+        boolean isCorrect = field.chars().allMatch(c -> cells.contains((char) c));
+        if (!isCorrect) {
+            throw new SolutionException("Field contains incorrect symbols");
+        }
+        if (!species.equals("Human") && !species.equals("Swamper") && !species.equals("Woodman")) {
+            throw new SolutionException("Incorrect species");
+        }
         int length = getLength(field);
         Map<Character, Integer> costs = getCosts(species);
         if (length <= 4) {
