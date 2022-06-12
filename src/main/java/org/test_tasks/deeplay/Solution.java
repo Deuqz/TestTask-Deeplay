@@ -7,10 +7,18 @@ package org.test_tasks.deeplay;
 //import java.util.Comparator;
 //import java.util.PriorityQueue;
 //import java.util.Arrays;
-import org.jetbrains.annotations.NotNull;
 
+import org.jetbrains.annotations.NotNull;
+import org.json.JSONObject;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class Solution {
     protected static class Node {
@@ -37,14 +45,14 @@ public class Solution {
         return (goalCoord - v.x) + (goalCoord - v.y);
     }
 
-    private static Map<Character, Integer> getCosts(String species) {
+    private static Map<Character, Integer> getDefaultCosts(String race) {
         List<Integer> prices;
-        if (species.equals("Human")) {
+        if (race.equals("Human")) {
             prices = List.of(5, 2, 3, 1);
-        } else if (species.equals("Swamper")) {
+        } else if (race.equals("Swamper")) {
             prices = List.of(2, 2, 5, 2);
         } else {
-            assert species.equals("Woodman");
+            assert race.equals("Woodman");
             prices = List.of(3, 3, 2, 2);
         }
         Map<Character, Integer> costs = new HashMap<>();
@@ -87,15 +95,9 @@ public class Solution {
         return len;
     }
 
-    private static int calcAStar(String field, Map<Character, Integer> costs, int length) {
-        Node start = createGraph(field, costs, length);
+    private static int walkGraph(Node start, int length, Comparator<Node> comp) {
         int result = 0;
-        Comparator<Node> comparator = (a, b) -> {
-            int valA = a.distance + heuristic(a, length);
-            int valB = b.distance + heuristic(b, length);
-            return Integer.compare(valA, valB);
-        };
-        PriorityQueue<Node> curCells = new PriorityQueue<>(comparator);
+        PriorityQueue<Node> curCells = new PriorityQueue<>(comp);
         curCells.add(start);
         while (!curCells.isEmpty()) {
             Node cur = curCells.poll();
@@ -112,20 +114,74 @@ public class Solution {
                 }
             }
         }
-        assert result != 0;
         return result;
     }
 
-    // Двумерная динамика по полю
+    private static int calcAStar(Node start, int length) {
+        Comparator<Node> comp = (a, b) -> {
+            int valA = a.distance + heuristic(a, length);
+            int valB = b.distance + heuristic(b, length);
+            return Integer.compare(valA, valB);
+        };
+        return walkGraph(start, length, comp);
+    }
+
+    private static int calcDijkstra(Node start, int length) {
+        Comparator<Node> comp = Comparator.comparingInt(a -> a.distance);
+        return walkGraph(start, length, comp);
+    }
+
+    @FunctionalInterface
+    private interface Consumer4 {
+        void accept(Integer i, Integer j, Integer k, Node nd);
+    }
+
+    private static int calcFordBellman(Node start, int length) throws SolutionException {
+        int n = length * length;
+        int[] dp = new int[n];
+        Arrays.fill(dp, Integer.MAX_VALUE);
+        dp[0] = 0;
+
+        Function<Node, Integer> getIndex = node -> node.y * length + node.x;
+        Consumer4 relax = (i, j, k, nd) -> {
+            int newDist = dp[i] + nd.cost;
+            if (k == n - 1 && newDist < dp[j]) {
+                throw new RuntimeException();
+            }
+            dp[j] = Math.min(dp[j], newDist);
+        };
+
+        for (int k = 0; k < n; ++k) {
+            Queue<Node> nodes = new LinkedList<>();
+            nodes.add(start);
+            while (!nodes.isEmpty()) {
+                Node cur = nodes.poll();
+                int indCur = getIndex.apply(cur);
+                for (Node next : cur.neighbors) {
+                    if (next.x > cur.x || next.y > cur.y) {
+                        int indNext = getIndex.apply(next);
+                        try {
+                            relax.accept(indCur, indNext, k, next);
+                            nodes.add(next);
+                            relax.accept(indNext, indCur, k, cur);
+                        } catch (RuntimeException e) {
+                            throw new SolutionException("Field contains negative cycle");
+                        }
+                    }
+                }
+            }
+        }
+        return dp[n - 1];
+    }
+
     private static int calcDynamics(@NotNull String field, Map<Character, Integer> costs, int length) {
-        // Оптимизация через один массив, т.к. достаточно хранить только текущую строку
+        // Optimization through a single array, because we can store only the current row
         int[] dp = new int[length];
         Arrays.fill(dp, Integer.MAX_VALUE);
         dp[0] = 0;
         char[] cells = field.toCharArray();
         for (int i = 0; i < length; ++i) {
             int ind = i * length;
-            // Мы не должны обновлять стартовую клетку
             if (ind != 0) {
                 dp[0] = dp[0] + costs.get(cells[ind]);
             }
@@ -137,21 +193,74 @@ public class Solution {
         return dp[length - 1];
     }
 
-    public static int getResult(@NotNull String field, @NotNull String species) throws SolutionException {
-        Set<Character> cells = Set.of('S', 'W', 'T', 'P');
-        boolean isCorrect = field.chars().allMatch(c -> cells.contains((char) c));
+    private static void checkFieldCorrectness(String field, Map<Character, Integer> costs) throws SolutionException {
+        boolean isCorrect = field.chars().allMatch(c -> costs.containsKey((char) c));
         if (!isCorrect) {
             throw new SolutionException("Field contains incorrect symbols");
         }
-        if (!species.equals("Human") && !species.equals("Swamper") && !species.equals("Woodman")) {
-            throw new SolutionException("Incorrect species");
+    }
+
+    public static int getResult(@NotNull String field, @NotNull String race) throws SolutionException {
+        if (!race.equals("Human") && !race.equals("Swamper") && !race.equals("Woodman")) {
+            throw new SolutionException("Incorrect race");
         }
+        Map<Character, Integer> costs = getDefaultCosts(race);
+        checkFieldCorrectness(field, costs);
         int length = getLength(field);
-        Map<Character, Integer> costs = getCosts(species);
         if (length <= 4) {
             return calcDynamics(field, costs, length);
         } else {
-            return calcAStar(field, costs, length);
+            Node start = createGraph(field, costs, length);
+            return calcAStar(start, length);
+        }
+    }
+
+    public static int getResultFromFile(@NotNull String field, @NotNull String race, @NotNull Path path)
+            throws SolutionException {
+        // Parse file
+        JSONObject specJSON;
+        try {
+            JSONObject info = new JSONObject(Files.readString(path));
+            specJSON = info.getJSONObject(race);
+        } catch (IOException e) {
+            throw new SolutionException(String.format("Can't read file %s", path), e);
+        } catch (org.json.JSONException e) {
+            throw new SolutionException(String.format("File don't contains race %s", race), e);
+        }
+
+        // Get costs
+        boolean allCostsPositive = true;
+        boolean hasNegative = false;
+        Map<Character, Integer> costs = new HashMap<>();
+        for (Iterator<String> it = specJSON.keys(); it.hasNext(); ) {
+            String type = it.next();
+            if (type.length() > 1) {
+                throw new SolutionException("Key types must be single letter");
+            }
+            int cost = specJSON.getInt(type);
+            if (cost <= 0) {
+                allCostsPositive = false;
+            }
+            if (cost < 0) {
+                hasNegative = true;
+            }
+            costs.put(type.charAt(0), specJSON.getInt(type));
+        }
+        checkFieldCorrectness(field, costs);
+
+        // Calculate
+        int length = getLength(field);
+        if (length <= 4 && allCostsPositive) {
+            return calcDynamics(field, costs, length);
+        } else {
+            Node start = createGraph(field, costs, length);
+            if (allCostsPositive) {
+                return calcAStar(start, length);
+            } else if (!hasNegative) {
+                return calcDijkstra(start, length);
+            } else {
+                return calcFordBellman(start, length);
+            }
         }
     }
 }
